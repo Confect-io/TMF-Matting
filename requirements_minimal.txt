@@ -1,0 +1,22 @@
+# Minimal requirements for TMF-Matting standardized inference script
+# For full TMF-Matting features, see requirements/runtime.txt and requirements/tests.txt
+
+# Core
+torch
+torchvision
+
+# Vision
+opencv-python
+Pillow
+scikit-image
+
+# MMEditing framework
+mmcv-full>=1.0.0
+
+# Utils
+numpy
+lmdb
+tensorboard
+yapf
+
+# Note: TMF-Matting uses mmcv and does not require detectron2
