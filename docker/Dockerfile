@@ -1,30 +1,36 @@
 # Multi-stage build for TMF-Matting
-# Builder stage with CUDA devel for compiling extensions
-ARG PYTORCH="1.6.0"
-ARG CUDA="10.1"
-ARG CUDNN="7"
+# Builder stage
+FROM python:3.9-slim as builder
 
-FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel as builder
-
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
-ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
-ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
-
-RUN apt-get update && apt-get install -y git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ninja-build \
+    build-essential \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender-dev \
+    libxext6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install CPU-only PyTorch
+RUN pip install --no-cache-dir torch==1.6.0+cpu torchvision==0.7.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+
 # Install mmediting
-RUN conda clean --all
 RUN git clone https://github.com/open-mmlab/mmediting.git /mmediting
 WORKDIR /mmediting
-ENV FORCE_CUDA="1"
-RUN pip install mmcv-full==latest+torch1.6.0+cu101 -f https://download.openmmlab.com/mmcv/dist/index.html
-RUN pip install cython --no-cache-dir
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir mmcv-full==1.3.0 -f https://download.openmmlab.com/mmcv/dist/cpu/torch1.6.0/index.html && \
+    pip install --no-cache-dir cython && \
+    pip install --no-cache-dir -e .
 
-# Runtime stage - CUDA runtime only (no build tools)
-FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-runtime
+# Strip unnecessary files from torch
+RUN rm -rf /usr/local/lib/python3.*/site-packages/torch/test && \
+    rm -rf /usr/local/lib/python3.*/site-packages/torch/include && \
+    find /usr/local/lib/python3.*/site-packages/torch -name "*.so" -exec strip {} \;
+
+# Runtime stage - slim base
+FROM python:3.9-slim
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,7 +41,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy conda environment from builder
-COPY --from=builder /opt/conda /opt/conda
+# Copy Python packages from builder
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /mmediting /mmediting
 
 WORKDIR /workspace
